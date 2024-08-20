@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// yarn prisma generate
+// yarn prisma studio
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+model NguoiDung {
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  pass_word String
+  phone     String
+  birth_day String
+  gender    String
+  role      String
+  DatPhong  DatPhong[]
+  BinhLuan  BinhLuan[]
+}
+
+model Phong {
+  id          Int       @id @default(autoincrement())
+  ten_phong   String
+  khach       Int
+  phong_ngu   Int
+  giuong      Int
+  phong_tam   Int
+  mo_ta       String
+  gia_tien    Int
+  may_giat    Boolean
+  ban_la      Boolean
+  tivi        Boolean
+  dieu_hoa    Boolean
+  wifi        Boolean
+  bep         Boolean
+  do_xe       Boolean
+  ban_ui      Boolean
+  hinh_anh    String
+  DatPhong    DatPhong[]
+  ViTri       ViTri     @relation(fields: [viTriId], references: [id])
+  viTriId     Int
+}
+
+model ViTri {
+  id         Int     @id @default(autoincrement())
+  ten_vi_tri String
+  tinh_thanh String
+  quoc_gia   String
+  hinh_anh   String
+  Phong      Phong[]
+}
+
+model DatPhong {
+  id              Int      @id @default(autoincrement())
+  ma_phong        Int
+  ngay_den        DateTime
+  ngay_di         DateTime
+  so_luong_khach  Int
+  ma_nguoi_dat    Int
+  NguoiDung       NguoiDung @relation(fields: [ma_nguoi_dat], references: [id])
+  Phong           Phong     @relation(fields: [ma_phong], references: [id])
+
+  @@unique([ma_phong, ma_nguoi_dat])
+}
+
+model BinhLuan {
+  id              Int       @id @default(autoincrement())
+  ma_cong_viec    Int
+  ma_nguoi_binh_luan Int
+  ngay_binh_luan  DateTime
+  noi_dung        String
+  sao_binh_luan   Int
+  NguoiDung       NguoiDung @relation(fields: [ma_nguoi_binh_luan], references: [id])
+}
+
