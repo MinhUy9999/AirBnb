@@ -74,7 +74,6 @@ model DatPhong {
 
 model BinhLuan {
   id              Int       @id @default(autoincrement())
-  ma_cong_viec    Int
   ma_nguoi_binh_luan Int
   ngay_binh_luan  DateTime
   noi_dung        String

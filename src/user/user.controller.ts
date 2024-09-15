@@ -1,31 +1,45 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, Query, HttpException, HttpStatus, BadRequestException, NotFoundException, UploadedFile, UseInterceptors, Logger } from '@nestjs/common';
+import {
+  Controller, Get, Post, Body, Put, Param, Delete, Query, HttpException,
+  HttpStatus, BadRequestException, NotFoundException, UploadedFile, UseInterceptors, Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
-import { diskStorage, } from 'multer';
+import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Express } from 'express';
 import * as sharp from 'sharp';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery, ApiParam } from '@nestjs/swagger'; // Import Swagger decorators
 
-
-
+@ApiTags('Users') // Nhóm các API dưới tag 'Users'
 @Controller('user')
 export class UserController {
-    private readonly logger = new Logger(UserController.name);
+  private readonly logger = new Logger(UserController.name);
+
   constructor(private readonly prismaService: PrismaService) {}
 
   @Post()
+  @ApiOperation({ summary: 'Tạo người dùng mới' }) // Mô tả API
+  @ApiResponse({ status: 201, description: 'Người dùng đã được tạo thành công.' })
+  @ApiResponse({ status: 400, description: 'Email đã tồn tại.' })
+  @ApiBody({ type: CreateUserDto }) // Mô tả body của request (CreateUserDto)
   async create(@Body() createUserDto: CreateUserDto) {
     try {
-      const user = await this.prismaService.nguoiDung.create({ data: createUserDto });
+      const saltOrRounds = 10;
+      const hashedPassword = await bcrypt.hash(createUserDto.pass_word, saltOrRounds);
+      const userData = {
+        ...createUserDto,
+        pass_word: hashedPassword,
+      };
+      const user = await this.prismaService.nguoiDung.create({ data: userData });
       return {
         message: 'User created successfully',
         data: user,
       };
     } catch (error) {
-      if (error.code === 'P2002') { // Prisma unique constraint error code
+      if (error.code === 'P2002') {
         throw new BadRequestException('Email already exists');
       }
       throw new HttpException('Failed to create user', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -33,6 +47,8 @@ export class UserController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'Lấy danh sách người dùng' })
+  @ApiResponse({ status: 200, description: 'Lấy người dùng thành công.' })
   async findAll() {
     try {
       const users = await this.prismaService.nguoiDung.findMany();
@@ -46,6 +62,10 @@ export class UserController {
   }
 
   @Get('paginate')
+  @ApiOperation({ summary: 'Phân trang người dùng' })
+  @ApiQuery({ name: 'page', required: false, description: 'Số trang', example: '1' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Số lượng người dùng mỗi trang', example: '10' })
+  @ApiResponse({ status: 200, description: 'Phân trang thành công.' })
   async findPaginated(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
@@ -53,14 +73,11 @@ export class UserController {
     try {
       const pageNumber = parseInt(page, 10);
       const pageSize = parseInt(limit, 10);
-
       const users = await this.prismaService.nguoiDung.findMany({
         skip: (pageNumber - 1) * pageSize,
         take: pageSize,
       });
-
       const totalUsers = await this.prismaService.nguoiDung.count();
-
       return {
         message: 'Users retrieved successfully',
         data: users,
@@ -77,6 +94,10 @@ export class UserController {
   }
 
   @Get('search')
+  @ApiOperation({ summary: 'Tìm kiếm người dùng theo tên' })
+  @ApiQuery({ name: 'name', required: true, description: 'Tên người dùng để tìm kiếm' })
+  @ApiResponse({ status: 200, description: 'Tìm kiếm thành công.' })
+  @ApiResponse({ status: 404, description: 'Không tìm thấy người dùng.' })
   async findByName(@Query('name') name: string) {
     try {
       const users = await this.prismaService.nguoiDung.findMany({
@@ -99,6 +120,10 @@ export class UserController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Lấy thông tin người dùng theo ID' })
+  @ApiParam({ name: 'id', description: 'ID của người dùng' })
+  @ApiResponse({ status: 200, description: 'Lấy thông tin người dùng thành công.' })
+  @ApiResponse({ status: 404, description: 'Người dùng không tìm thấy.' })
   async findOne(@Param('id') id: string) {
     try {
       const user = await this.prismaService.nguoiDung.findUnique({ where: { id: Number(id) } });
@@ -115,24 +140,24 @@ export class UserController {
   }
 
   @Put(':id')
+  @ApiOperation({ summary: 'Cập nhật người dùng' })
+  @ApiParam({ name: 'id', description: 'ID của người dùng cần cập nhật' })
+  @ApiResponse({ status: 200, description: 'Cập nhật người dùng thành công.' })
+  @ApiResponse({ status: 404, description: 'Người dùng không tìm thấy.' })
+  @ApiBody({ type: UpdateUserDto })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     try {
       const user = await this.prismaService.nguoiDung.findUnique({ where: { id: Number(id) } });
       if (!user) {
         throw new NotFoundException('User not found');
       }
-  
-      // Check if the password needs to be hashed
       if (updateUserDto.pass_word) {
-        const salt = await bcrypt.genSalt(10);
-        updateUserDto.pass_word = await bcrypt.hash(updateUserDto.pass_word, salt);
+        updateUserDto.pass_word = await bcrypt.hash(updateUserDto.pass_word, 10);
       }
-  
       const updatedUser = await this.prismaService.nguoiDung.update({
         where: { id: Number(id) },
         data: updateUserDto,
       });
-  
       return {
         message: 'User updated successfully',
         data: updatedUser,
@@ -143,6 +168,10 @@ export class UserController {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Xóa người dùng' })
+  @ApiParam({ name: 'id', description: 'ID của người dùng cần xóa' })
+  @ApiResponse({ status: 200, description: 'Xóa người dùng thành công.' })
+  @ApiResponse({ status: 404, description: 'Người dùng không tìm thấy.' })
   async remove(@Param('id') id: string) {
     try {
       const user = await this.prismaService.nguoiDung.findUnique({ where: { id: Number(id) } });
@@ -169,54 +198,32 @@ export class UserController {
       },
     }),
   }))
+  @ApiOperation({ summary: 'Upload avatar cho người dùng' })
+  @ApiParam({ name: 'id', description: 'ID của người dùng' })
+  @ApiResponse({ status: 200, description: 'Upload avatar thành công.' })
+  @ApiResponse({ status: 404, description: 'Người dùng không tìm thấy.' })
   async uploadAvatar(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
     try {
       if (!file) {
         this.logger.error('No file uploaded');
         throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
       }
-  
-      // Find user to validate if exists
+
       const user = await this.prismaService.nguoiDung.findUnique({ where: { id: Number(id) } });
       if (!user) {
         this.logger.error(`User not found: ${id}`);
         throw new NotFoundException('User not found');
       }
-  
-      // Resize the image
-      this.logger.log('Starting image resizing process');
-      let resizedImageBuffer: Buffer;
-      try {
-        resizedImageBuffer = await sharp(file.path)
-          .resize(150, 150)  // Resize to 150x150 pixels
-          .toBuffer();
-        this.logger.log('Image resizing completed');
-      } catch (err) {
-        this.logger.error('Failed to resize image', err.stack);
-        throw new HttpException('Failed to resize image', HttpStatus.INTERNAL_SERVER_ERROR);
-      }
-  
-      // Save resized image
+
+      const resizedImageBuffer = await sharp(file.path)
+        .resize(150, 150)
+        .toBuffer();
+
       const resizedFilename = `${Date.now()}-resized${extname(file.originalname)}`;
       const resizedFilePath = `./uploads/avatars/${resizedFilename}`;
-      try {
-        await sharp(resizedImageBuffer).toFile(resizedFilePath);
-        this.logger.log(`Resized image saved to ${resizedFilePath}`);
-      } catch (err) {
-        this.logger.error('Failed to save resized image', err.stack);
-        throw new HttpException('Failed to save resized image', HttpStatus.INTERNAL_SERVER_ERROR);
-      }
-  
-      // Convert to base64
-      let base64Image: string;
-      try {
-        base64Image = resizedImageBuffer.toString('base64');
-        this.logger.log('Image converted to base64');
-      } catch (err) {
-        this.logger.error('Failed to convert image to base64', err.stack);
-        throw new HttpException('Failed to convert image to base64', HttpStatus.INTERNAL_SERVER_ERROR);
-      }
-  
+      await sharp(resizedImageBuffer).toFile(resizedFilePath);
+
+      const base64Image = resizedImageBuffer.toString('base64');
       const fileUrl = `/uploads/avatars/${resizedFilename}`;
       return {
         message: 'Avatar uploaded and resized successfully',
@@ -230,5 +237,4 @@ export class UserController {
       throw new HttpException('Failed to upload and process avatar', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
-  
-}  
+}
